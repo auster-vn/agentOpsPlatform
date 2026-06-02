@@ -1,0 +1,356 @@
+version: "3.8"
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.1-python3.11
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://agentops:agentops@postgres:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: "ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg="
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    PYTHONPATH: "/opt/airflow"
+    KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: 5432
+    POSTGRES_USER: agentops
+    POSTGRES_PASSWORD: agentops
+    POSTGRES_DB: agentops
+    MINIO_ENDPOINT: minio:9000
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin123
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./ml:/opt/airflow/ml
+    - ./dbt_project:/opt/airflow/dbt_project
+    - airflow_logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  # ============================================================
+  # INFRASTRUCTURE
+  # ============================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: agentops_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: agentops_kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_MESSAGE_MAX_BYTES: 10485760
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 10485880
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: agentops_kafka_setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Creating Kafka topics...'
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic agent_events --partitions 3 --replication-factor 1
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic tool_calls --partitions 3 --replication-factor 1
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic errors --partitions 2 --replication-factor 1
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic feedbacks --partitions 2 --replication-factor 1
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic agent_events_dlq --partitions 1 --replication-factor 1
+      echo 'Kafka topics created successfully!'
+      "
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-01T01-11-10Z
+    container_name: agentops_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      retries: 5
+
+  minio-setup:
+    image: minio/mc:RELEASE.2024-04-29T09-56-05Z
+    container_name: agentops_minio_setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      mc alias set local http://minio:9000 minioadmin minioadmin123
+      mc mb --ignore-existing local/agentops-lake
+      mc mb --ignore-existing local/mlflow-artifacts
+      echo 'MinIO buckets created'
+      "
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentops_postgres
+    environment:
+      POSTGRES_USER: agentops
+      POSTGRES_PASSWORD: agentops
+      POSTGRES_DB: agentops
+      POSTGRES_MULTIPLE_DATABASES: airflow,mlflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - ./scripts/create_dbs.sh:/docker-entrypoint-initdb.d/create_dbs.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ============================================================
+  # APACHE SPARK
+  # ============================================================
+  spark-master:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: agentops_spark_master
+    hostname: spark-master
+    environment:
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: no
+      SPARK_RPC_ENCRYPTION_ENABLED: no
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: agentops
+      POSTGRES_PASSWORD: agentops
+      POSTGRES_DB: agentops
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./spark:/opt/spark-apps
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  spark-worker:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: agentops_spark_worker
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 2
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+    depends_on:
+      - spark-master
+
+  streaming-job:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: agentops_streaming
+    command: ["/opt/bitnami/spark/bin/spark-submit", "--master", "spark://spark-master:7077",
+              "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.7.3",
+              "--conf", "spark.hadoop.fs.s3a.endpoint=http://minio:9000",
+              "--conf", "spark.hadoop.fs.s3a.access.key=minioadmin",
+              "--conf", "spark.hadoop.fs.s3a.secret.key=minioadmin123",
+              "--conf", "spark.hadoop.fs.s3a.path.style.access=true",
+              "--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
+              "/opt/spark-apps/streaming_processor.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: agentops
+      POSTGRES_PASSWORD: agentops
+      POSTGRES_DB: agentops
+    volumes:
+      - ./spark:/opt/spark-apps
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+      spark-master:
+        condition: service_started
+
+  # ============================================================
+  # APACHE AIRFLOW
+  # ============================================================
+  airflow-init:
+    <<: *airflow-common
+    container_name: agentops_airflow_init
+    entrypoint: /bin/bash
+    command: -c "airflow db upgrade && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@agentops.ai --password admin && echo 'Airflow initialized'"
+    environment:
+      <<: *airflow-common-env
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: agentops_airflow_web
+    command: webserver
+    ports:
+      - "8088:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      retries: 10
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: agentops_airflow_scheduler
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ============================================================
+  # MLFLOW
+  # ============================================================
+  mlflow:
+    image: python:3.11-slim
+    container_name: agentops_mlflow
+    command: >
+      bash -c "pip install mlflow psycopg2-binary boto3 --quiet &&
+               mlflow server
+               --backend-store-uri postgresql+psycopg2://agentops:agentops@postgres:5432/mlflow
+               --artifacts-destination s3://mlflow-artifacts
+               --host 0.0.0.0
+               --port 5000"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+
+  # ============================================================
+  # FASTAPI BACKEND
+  # ============================================================
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: agentops_api
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: agentops
+      POSTGRES_PASSWORD: agentops
+      POSTGRES_DB: agentops
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./ml:/app/ml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+  # ============================================================
+  # DATA GENERATOR
+  # ============================================================
+  generator:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    container_name: agentops_generator
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EVENTS_PER_SECOND: "5"
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+
+  # ============================================================
+  # REACT DASHBOARD
+  # ============================================================
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: agentops_dashboard
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  kafka_data:
+  zookeeper_data:
+  zookeeper_logs:
+  minio_data:
+  airflow_logs:

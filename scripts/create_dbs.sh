@@ -1,0 +1,12 @@
+#!/bin/bash
+# Create additional databases for Airflow and MLflow
+set -e
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE DATABASE airflow;
+    GRANT ALL PRIVILEGES ON DATABASE airflow TO $POSTGRES_USER;
+
+    CREATE DATABASE mlflow;
+    GRANT ALL PRIVILEGES ON DATABASE mlflow TO $POSTGRES_USER;
+EOSQL
+echo "Additional databases created: airflow, mlflow"
