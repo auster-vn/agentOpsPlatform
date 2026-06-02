@@ -177,7 +177,7 @@ def bronze_to_silver(**context):
 def _insert_synthetic_silver_data(cursor, pg_conn, date_str):
     """Insert synthetic data for demonstration when no bronze files exist."""
     import random
-    from datetime import datetime, timezone
+    from datetime import timezone
 
     agents = ["support_agent", "coding_agent", "sales_agent", "hr_agent", "knowledge_agent"]
     for _ in range(200):

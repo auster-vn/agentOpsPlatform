@@ -188,7 +188,6 @@ def run_training():
 def _write_forecasts(df: pd.DataFrame, model, feature_cols: list):
     """Generate and persist 7-day forecasts per agent to PostgreSQL."""
     from ml.utils import get_pg_conn
-    import psycopg2
 
     conn   = get_pg_conn()
     cursor = conn.cursor()

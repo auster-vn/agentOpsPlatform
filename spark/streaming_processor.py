@@ -231,7 +231,7 @@ def run_streaming():
     )
 
     # --- WRITE BRONZE LAYER to MinIO ---
-    bronze_conversations_query = write_to_bronze(
+    write_to_bronze(
         conversation_df.select(
             "conversation_id", "agent_id", "agent_name", "model",
             "user_question", "agent_response", "latency_ms",
@@ -242,7 +242,7 @@ def run_streaming():
         "conversations"
     )
 
-    bronze_tool_calls_query = write_to_bronze(
+    write_to_bronze(
         tool_calls_df.select(
             "call_id", "conversation_id", "agent_id", "tool_name",
             "latency_ms", "success", "error_message", "event_timestamp"
@@ -251,7 +251,7 @@ def run_streaming():
     )
 
     # --- WRITE REALTIME METRICS to PostgreSQL ---
-    realtime_query = (
+    (
         windowed_metrics.writeStream
         .outputMode("update")
         .foreachBatch(write_realtime_metrics_to_postgres)
@@ -263,7 +263,7 @@ def run_streaming():
     logger.info("🚀 All streaming queries started. Awaiting termination...")
     logger.info(f"  📦 Bronze Conversations -> {BRONZE_PATH}/conversations")
     logger.info(f"  📦 Bronze Tool Calls    -> {BRONZE_PATH}/tool_calls")
-    logger.info(f"  📊 Realtime Metrics     -> PostgreSQL::realtime_metrics")
+    logger.info("  📊 Realtime Metrics     -> PostgreSQL::realtime_metrics")
 
     # Wait for all queries
     spark.streams.awaitAnyTermination()

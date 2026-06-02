@@ -204,7 +204,8 @@ def health_check():
     status = {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat(),
               "version": "1.0.0"}
     try:
-        conn = get_pg_conn(); conn.close()
+        conn = get_pg_conn()
+        conn.close()
         status["postgres"] = "connected"
     except Exception:
         status["postgres"] = "unavailable"
@@ -231,7 +232,8 @@ def platform_stats():
             WHERE event_timestamp >= NOW() - INTERVAL '24 hours'
         """)
         row = dict(cursor.fetchone() or {})
-        cursor.close(); conn.close()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.warning(f"DB unavailable for platform_stats: {e}")
         row = {}
@@ -261,7 +263,8 @@ def list_agents():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM v_agent_summary ORDER BY quality_score DESC NULLS LAST")
         rows = [dict(r) for r in cursor.fetchall()]
-        cursor.close(); conn.close()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.warning(f"DB unavailable for list_agents: {e}")
 
@@ -311,7 +314,8 @@ def agent_daily_metrics(
             ORDER BY metric_date
         """, (agent_id, str(days)))
         rows = [dict(r) for r in cursor.fetchall()]
-        cursor.close(); conn.close()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.warning(f"DB unavailable for agent metrics {agent_id}: {e}")
 
@@ -332,7 +336,8 @@ def realtime_metrics(agent_id: Optional[str] = None):
         else:
             cursor.execute("SELECT * FROM v_latest_realtime ORDER BY agent_id")
         rows = [dict(r) for r in cursor.fetchall()]
-        cursor.close(); conn.close()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.warning(f"DB unavailable for realtime metrics: {e}")
 
@@ -394,13 +399,16 @@ def predict_hallucination(req: HallucinationRequest):
 
     # Log to audit table
     try:
-        conn = get_pg_conn(); cursor = conn.cursor()
+        conn = get_pg_conn()
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO ml_predictions_log (prediction_type, input_data, prediction, model_version, latency_ms)
             VALUES (%s, %s, %s, %s, %s)
         """, ("hallucination", psycopg2.extras.Json({"question": req.question[:200], "context": req.context[:200]}),
               hall_prob, "sentence_transformer_v1", int((time.time() - t0) * 1000)))
-        conn.commit(); cursor.close(); conn.close()
+        conn.commit()
+        cursor.close()
+        conn.close()
     except Exception:
         pass
 
@@ -448,11 +456,16 @@ def predict_failure(req: FailurePredictionRequest):
         fail_prob = _failure_heuristic(req)
 
     factors = []
-    if req.latency_ms > 2000:  factors.append("High latency")
-    if req.token_count > 1000: factors.append("High token count")
-    if req.tool_count > 3:     factors.append("Many tool calls")
-    if req.cost > 0.05:        factors.append("High cost")
-    if not factors:            factors.append("Normal operation")
+    if req.latency_ms > 2000:
+        factors.append("High latency")
+    if req.token_count > 1000:
+        factors.append("High token count")
+    if req.tool_count > 3:
+        factors.append("Many tool calls")
+    if req.cost > 0.05:
+        factors.append("High cost")
+    if not factors:
+        factors.append("Normal operation")
 
     risk = "critical" if fail_prob > 0.7 else "high" if fail_prob > 0.4 else "medium" if fail_prob > 0.2 else "low"
 
@@ -500,7 +513,8 @@ def cost_forecasts(
                 ORDER BY forecast_date, agent_id LIMIT %s
             """, (days * 5,))
         rows = [dict(r) for r in cursor.fetchall()]
-        cursor.close(); conn.close()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.warning(f"DB unavailable for cost_forecasts: {e}")
 
@@ -553,7 +567,8 @@ def hallucination_metrics(days: int = Query(7, ge=1, le=30)):
             ORDER BY metric_date, agent_id
         """, (str(days),))
         rows = [dict(r) for r in cursor.fetchall()]
-        cursor.close(); conn.close()
+        cursor.close()
+        conn.close()
     except Exception as e:
         logger.warning(f"DB unavailable for hallucination_metrics: {e}")
 
