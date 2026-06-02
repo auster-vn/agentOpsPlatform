@@ -11,6 +11,52 @@ AgentOps Platform is a **production-grade Data Engineering & AI/MLOps portfolio 
 
 ---
 
+## 🖥️ Premium Glassmorphism Dashboard Preview
+
+The frontend is a dark-mode slate UI featuring glassmorphism cards, vibrant interactive SVGs, and real-time streaming updates.
+
+### 1. Executive Operations Overview
+<p align="center">
+  <img src="assets/screenshots/executive_overview.png" width="950" alt="Executive Overview" />
+</p>
+<p align="center">
+  <em>The central operational command center compiling conversational token volumes, daily cost curves, overall success rate, and real-time request trend charts.</em>
+</p>
+
+### 2. Multi-Agent Evaluation & Quality Scoring
+<p align="center">
+  <img src="assets/screenshots/quality_scores.png" width="950" alt="Agent Quality Scores" />
+</p>
+<p align="center">
+  <em>Continuous multi-agent evaluation scoring utilizing circular progress gauges and custom composite formula mapping ($Q$) across success, cost, failure, and hallucination rates.</em>
+</p>
+
+### 3. ML Inference Hub (Hallucination Detection Suite)
+Compare hallucinated vs. grounded outputs dynamically using vector embeddings:
+
+| 🔴 Hallucination Detected (Rogue Response) | 🟢 Response Grounded & Verified |
+| :---: | :---: |
+| <img src="assets/screenshots/inference_hallucinated.png" width="460" alt="Hallucination Detected" /> | <img src="assets/screenshots/inference_grounded.png" width="460" alt="Response Grounded" /> |
+| *Identifies discrepancy (91% probability) for irrelevant answers* | *Validates factual alignment (29% probability) against context* |
+
+### 4. XGBoost Time-Series Cost Forecasting
+<p align="center">
+  <img src="assets/screenshots/cost_forecasts.png" width="950" alt="Cost Forecasts" />
+</p>
+<p align="center">
+  <em>7-day predictive cost projections utilizing time-series lagged regressions and stacked area confidence bands per agent type.</em>
+</p>
+
+### 5. Pipeline Infrastructure & Service Status
+<p align="center">
+  <img src="assets/screenshots/pipeline_status.png" width="950" alt="Pipeline Status" />
+</p>
+<p align="center">
+  <em>Consolidated system health monitor tracking Apache Kafka throughput, PySpark consumer lag, MinIO medallion lake buckets, and Airflow DAG success runs.</em>
+</p>
+
+---
+
 ## 🌟 Core Highlights & Capabilities
 
 * **Real-Time Stream Processing**: Consumes millions of agent conversational events, tool executions, and errors via **Apache Kafka** and aggregates metrics in sub-second windows using **PySpark Structured Streaming**.
@@ -20,7 +66,6 @@ AgentOps Platform is a **production-grade Data Engineering & AI/MLOps portfolio 
   * **Hallucination Detection**: Sentence-Transformers (`all-MiniLM-L6-v2`) embedded similarity modeling with a Logistic Regression probability scorer.
   * **Agent Failure Prediction**: Real-time XGBoost binary classification assessing failure risks based on latency, tokens, and tool usage.
   * **Cost Forecasting**: XGBoost time-series regressor with confidence intervals forecasting multi-agent costs 7 days ahead.
-* **Premium React Dashboard**: A stunning, modern dark-mode user interface designed with a Glassmorphism theme, interactive charts (Recharts), and Framer Motion micro-animations.
 * **Complete MLOps Lifecycle**: Integrates **MLflow** for experiment tracking, run versioning, parameter tuning, and model registration, fully automated through Airflow orchestration.
 
 ---
@@ -147,6 +192,8 @@ agentops-platform/
 │   └── requirements.txt        # Airflow-specific dependency specifications
 ├── api/                        # Web API Layer
 │   └── main.py                 # FastAPI application serving endpoints & ML inference
+├── assets/                     # Media & Static assets
+│   └── screenshots/            # Dashboard page screenshots
 ├── config/                     # Infrastructure configuration files
 ├── dashboard/                  # Presentation Layer (Frontend)
 │   ├── src/
@@ -231,10 +278,10 @@ The data warehouse maintains a production-grade Star Schema optimized for downst
 To assess multi-agent systems reliably, the platform deploys three active machine learning models integrated with the **MLflow Registry** for experiment tracking.
 
 ```
-                  ┌──────────────────────────────┐
-                  │      MLflow Experiment       │
-                  └──────────────┬───────────────┘
-                                 │
+                   ┌──────────────────────────────┐
+                   │      MLflow Experiment       │
+                   └──────────────┬───────────────┘
+                                  │
          ┌───────────────────────┼───────────────────────┐
          ▼                       ▼                       ▼
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -269,16 +316,6 @@ $$Q = 0.40 \times \text{Success Rate} + 0.30 \times (1 - \text{Failure Prob}) - 
 * **Excellent**: $Q \ge 0.80$
 * **Good**: $0.60 \le Q < 0.80$
 * **Needs Improvement**: $Q < 0.60$
-
----
-
-## 🎨 Beautiful Glassmorphism React Dashboard
-
-The frontend application is built to showcase modern, premium web interfaces:
-* **Dark Mode Aesthetics**: Sleek dark slate layout (`#0B0F19`) accented with neon gradient rings and soft drop-shadow border containers.
-* **Interactive ML Inference Hub**: Play playground enabling users to submit custom prompts, context, and responses to test the Hallucination Scorer dynamically.
-* **Cost Forecasting Charts**: Multi-colored stacked bars mapping the 7-day XGBoost forecast alongside standard line bands depicting historical trends.
-* **Realtime Stream Feed**: Dynamic component that automatically reads and refreshes the live streaming pipeline state every 15 seconds.
 
 ---
 
