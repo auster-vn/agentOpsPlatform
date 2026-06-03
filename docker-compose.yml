@@ -269,15 +269,16 @@ services:
   # MLFLOW
   # ============================================================
   mlflow:
-    image: python:3.11-slim
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
     container_name: agentops_mlflow
     command: >
-      bash -c "pip install mlflow psycopg2-binary boto3 --quiet &&
-               mlflow server
-               --backend-store-uri postgresql+psycopg2://agentops:agentops@postgres:5432/mlflow
-               --artifacts-destination s3://mlflow-artifacts
-               --host 0.0.0.0
-               --port 5000"
+      mlflow server
+      --backend-store-uri postgresql+psycopg2://agentops:agentops@postgres:5432/mlflow
+      --artifacts-destination s3://mlflow-artifacts
+      --host 0.0.0.0
+      --port 5000
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: minioadmin

@@ -65,6 +65,15 @@ jobs:
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
+      - name: Build MLflow image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mlflow
+          push: false
+          tags: agentops/mlflow:latest
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
