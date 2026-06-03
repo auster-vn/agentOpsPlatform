@@ -52,6 +52,7 @@ jobs:
           context: ./api
           push: false
           tags: agentops/api:latest
+          build-args: SKIP_MODEL_DOWNLOAD=true
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
