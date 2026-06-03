@@ -74,18 +74,21 @@ jobs:
 
       - name: Start core services
         run: |
-          docker compose up -d postgres minio
-          sleep 15
+          docker compose up -d postgres minio minio-setup
+          docker compose wait minio-setup || true
 
-      - name: Run DB schema init
+      - name: Start MLflow
         run: |
-          docker compose exec -T postgres psql -U agentops -f /docker-entrypoint-initdb.d/init_db.sql || true
+          docker compose up -d mlflow
+          # Poll until MLflow HTTP server is up (up to 3 minutes)
+          timeout 180 bash -c 'until curl -sf http://localhost:5000/health; do sleep 5; done'
 
-      - name: Check API health
+      - name: Start API and check health
         run: |
           docker compose up -d api
-          sleep 20
-          curl --fail http://localhost:8000/health || exit 1
+          curl --retry 18 --retry-delay 5 --retry-connrefused \
+               --fail --max-time 10 \
+               http://localhost:8000/health
 
       - name: Teardown
         if: always()

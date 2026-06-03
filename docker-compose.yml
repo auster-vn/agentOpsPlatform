@@ -289,6 +289,12 @@ services:
         condition: service_healthy
       minio-setup:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
 
   # ============================================================
   # FASTAPI BACKEND
@@ -317,7 +323,7 @@ services:
       postgres:
         condition: service_healthy
       mlflow:
-        condition: service_started
+        condition: service_healthy
 
   # ============================================================
   # DATA GENERATOR
