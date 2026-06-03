@@ -290,7 +290,7 @@ services:
       minio-setup:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 15s
       timeout: 10s
       retries: 12
